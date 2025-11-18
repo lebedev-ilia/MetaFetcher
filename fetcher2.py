@@ -128,7 +128,7 @@ def wait_until_quota_reset():
     now_moscow = datetime.now(moscow_tz)
     
     # Определяем время обновления квоты (10:00 МСК)
-    reset_time_today = now_moscow.replace(hour=10, minute=0, second=0, microsecond=0)
+    reset_time_today = now_moscow.replace(hour=11, minute=1, second=0, microsecond=0)
     
     # Выбираем ближайшее время обновления
     if now_moscow < reset_time_today:
@@ -186,7 +186,9 @@ class Fetcher():
         # Используем глобальный logger для единообразия
         self.logger = _global_logger
         
-        self.KEYS = []
+        self.KEYS = [
+            "AIzaSyBYKGEA8Vs6xfLdFS2BES8ZhRR0xkfQXnM"
+        ]
         self.current_key_index = current_key_index if current_key_index else 0
         # Инициализируем KeyManager для thread-safe управления ключами
         self.key_manager = KeyManager(self.KEYS)
@@ -1017,6 +1019,7 @@ class Fetcher():
                 self.logger.warning(f"    [ОШИБКА КЛЮЧА] Тип: {error_type} | Ключ #{self.current_key_index + 1} ({key_id}) | Reason: {error_reason or 'не указан'}")
             else:
                 self.logger.warning(f"    [ОШИБКА КЛЮЧА] Тип: {error_type} | Ключ #{self.current_key_index + 1} (индекс вне диапазона) | Reason: {error_reason or 'не указан'}")
+                return False, retry_count
             
             # Пытаемся переключиться на следующий ключ
             if self._switch_to_next_key():
@@ -1342,10 +1345,6 @@ class Fetcher():
                 # Успешно получили комментарии
                 return (video_id, video_comments, quota, True)
 
-            except RuntimeError as e:
-                # Все ключи исчерпаны
-                self.logger.warning(f"get_comment | RuntimeError | Уровень: video_id: {video_id} | {e}")
-                return (video_id, [], 0, False)
             except HttpError as e:
                 # Используем версию check_http_error для параллельных методов
                 status, retry_count = self._check_http_error_parallel(e, retry_count)
@@ -1361,7 +1360,7 @@ class Fetcher():
                     continue
                 else:
                     self.logger.warning(f"get_comment | HttpError | Уровень: video_id: {video_id} | Статус: {status} | Пропускаем видео")
-                    return (video_id, [], 0, False)
+                    return (video_id, [], 0, True)
             except Exception as e:
                 self.logger.warning(f"get_comment | Exception | Уровень: video_id | {video_id} | {e}")
                 return (video_id, [], 0, False)
@@ -1382,6 +1381,7 @@ class Fetcher():
         all_comments = {}
         total_quota = 0
         failed_videos = set()
+        status = True
         
         self.logger.info("")
         self.logger.info(f"_get_comments | Запрос: {len(vids)} | Потоков: {self.MAX_WORKERS}")
@@ -1402,8 +1402,11 @@ class Fetcher():
                     vid, comments, quota, success = future.result()
                     all_comments[vid] = comments
                     total_quota += quota
-                    if not success:
+                    if not quota:
                         failed_videos.add(vid)
+                    if not success:
+                        status = False
+                        break
                 except Exception as e:
                     self.logger.warning(f"_get_comments | Ошибка при обработке {video_id}: {e}")
                     failed_videos.add(video_id)
@@ -1411,10 +1414,13 @@ class Fetcher():
         
         if len(failed_videos) > 0:
             self.logger.warning(f"    Пропущено видео с ошибками при получении комментариев: {len(failed_videos)}")
+            
+        if self.current_key_index >= len(self.KEYS):
+            status = False
         
         self.logger.info(f"_get_comments | На выходе: {len(all_comments)} | Квота: {total_quota} | Ошибок: {len(failed_videos)}")
         
-        return all_comments, total_quota, failed_videos
+        return all_comments, total_quota, failed_videos, status
 
     def _min_val_filter(self, response: dict):
         """
@@ -1645,17 +1651,17 @@ class Fetcher():
                 
                 self.logger.info(f"get_basic_info | На выходе: {len(items)} | Квота: {quota}")    
 
-                return items, quota, duration
+                return items, quota, duration, True
 
             except HttpError as e:
                 status, retry_count = self.check_http_error(e, retry_count)
                 if status:
                     self.logger.warning(f"get_basic_info | HttpError | Уровень: video_ids | len(vids): {len_vids} | Статус: {status} | Повторяем попытку: {retry_count}")
                     continue
-            # except Exception as e:
-            #     print(f"get_basic_info | Exception | Уровень: video_ids | len(vids): {len_vids}: {e}")
-            #     break
-        return {}, 0, 0
+                else:
+                    self.logger.warning(f"get_basic_info | HttpError | Уровень: video_ids | len(vids): {len_vids} | Статус: {status}")
+                    break
+        return {}, 0, 0, False
 
     def _get_channel_info_single(self, vid: str, channel_id: str) -> tuple:
         """
@@ -1711,33 +1717,12 @@ class Fetcher():
                     else:
                         # Пустой ответ - канал не найден или невалидный channel_id
                         self.logger.warning(f"get_channel_info_single | Пустой ответ API для channel_id: {channel_id} (канал не найден или невалидный ID)")
-                        channel_data = {
-                            "subscriberCount": None,
-                            "videoCount": None,
-                            "viewCount_channel": None,
-                            "country": '',
-                            "channelTitle": ''
-                        }
-                        # Сохраняем в кэш (thread-safe)
+
                         with self.channel_cache_lock:
-                            self.channel_cache[channel_id] = channel_data
+                            self.channel_cache[channel_id] = {}
                         
-                        return (vid, channel_data, 0, True)
+                        return (vid, {}, 0, True)
                     
-                except RuntimeError as e:
-                    # Все ключи исчерпаны
-                    self.logger.warning(f"get_channel_info | RuntimeError | Уровень: channel_id: {channel_id} | {e}")
-                    channel_data = {
-                        "subscriberCount": None,
-                        "videoCount": None,
-                        "viewCount_channel": None,
-                        "country": '',
-                        "channelTitle": ''
-                    }
-                    # Сохраняем в кэш, чтобы другие потоки не пытались делать запросы
-                    with self.channel_cache_lock:
-                        self.channel_cache[channel_id] = channel_data
-                    return (vid, channel_data, 0, False)
                 except HttpError as e:
                     status, retry_count = self._check_http_error_parallel(e, retry_count)
                     if status:
@@ -1748,48 +1733,25 @@ class Fetcher():
                             delattr(self.key_manager.local, 'key_version')
                         if hasattr(self.key_manager.local, 'key_index'):
                             delattr(self.key_manager.local, 'key_index')
-                        self.logger.warning(f"get_channel_info | HttpError | Уровень: channel_id: {channel_id} | Статус: {status} | Повторяем попытку: {retry_count}")
+                        self.logger.warning(f"get_channel_info_single | HttpError | Уровень: channel_id: {channel_id} | Статус: {status} | Повторяем попытку: {retry_count}")
                         continue
                     else:
-                        # Ошибка не связана с ключом - создаем пустые данные
-                        self.logger.warning(f"get_channel_info | HttpError | Уровень: channel_id: {channel_id} | Статус: {status} | Создаем пустые данные")
-                        channel_data = {
-                            "subscriberCount": None,
-                            "videoCount": None,
-                            "viewCount_channel": None,
-                            "country": '',
-                            "channelTitle": ''
-                        }
-                        # Сохраняем в кэш (thread-safe)
+                        self.logger.warning(f"get_channel_info_single | HttpError | Уровень: channel_id: {channel_id} | Статус: {status} | Создаем пустые данные")
+
                         with self.channel_cache_lock:
-                            self.channel_cache[channel_id] = channel_data
-                        return (vid, channel_data, 0, False)
+                            self.channel_cache[channel_id] = {}
+                        return (vid, {}, 0, False)
                 except Exception as e:
-                    self.logger.warning(f"get_channel_info | Exception | Уровень: channel_id: {channel_id} | {e}")
-                    channel_data = {
-                        "subscriberCount": None,
-                        "videoCount": None,
-                        "viewCount_channel": None,
-                        "country": '',
-                        "channelTitle": ''
-                    }
-                    # Сохраняем в кэш, чтобы другие потоки не пытались делать запросы
+                    self.logger.warning(f"get_channel_info_single | Exception | Уровень: channel_id: {channel_id} | {e}")
+   
                     with self.channel_cache_lock:
-                        self.channel_cache[channel_id] = channel_data
-                    return (vid, channel_data, 0, False)
-            
-            # Если все попытки исчерпаны
-            channel_data = {
-                "subscriberCount": None,
-                "videoCount": None,
-                "viewCount_channel": None,
-                "country": '',
-                "channelTitle": ''
-            }
-            # Сохраняем в кэш, чтобы другие потоки не пытались делать запросы
+                        self.channel_cache[channel_id] = {}
+                        
+                    return (vid, {}, 0, False)
+
             with self.channel_cache_lock:
-                self.channel_cache[channel_id] = channel_data
-            return (vid, channel_data, 0, False)
+                self.channel_cache[channel_id] = {}
+            return (vid, {}, 0, False)
 
     def _get_channel_info(self, base_info: dict) -> dict:
         """
@@ -1826,6 +1788,8 @@ class Fetcher():
             self.logger.info(f"_get_channel_info | Нет задач для обработки")
             return items, total_quota
         
+        status = True
+        
         # Используем ThreadPoolExecutor для параллельной обработки
         with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as executor:
             # Запускаем задачи для всех каналов
@@ -1838,20 +1802,14 @@ class Fetcher():
                     result_vid, channel_data, quota, success = future.result()
                     items[result_vid] = channel_data
                     total_quota += quota
+                    if not success:
+                        status = False
+                        break
                 except Exception as e:
                     self.logger.warning(f"_get_channel_info | Ошибка при обработке {vid} (channel_id: {channel_id}): {e}")
-                    # Создаем пустые данные при ошибке
-                    channel_data = {
-                        "subscriberCount": None,
-                        "videoCount": None,
-                        "viewCount_channel": None,
-                        "country": '',
-                        "channelTitle": ''
-                    }
-                    items[vid] = channel_data
         
         self.logger.info(f"_get_channel_info | На выходе: {len(items)} | Квота: {total_quota}")
-        return items, total_quota
+        return items, total_quota, status
 
     def _batching(self, vids: list) -> list:
         batches = []
@@ -1916,25 +1874,38 @@ class Fetcher():
     def _batch_run(self, vids: list, previous_data: Optional[Dict[str, Dict]] = None) -> dict:
         batches = self._batching(vids)
         batch_results = []
-        for batch in batches:
+        _status = True
+        for i, batch in enumerate(batches):
             start_time = time.time()
-            base_data, base_quota, duration = self._get_basic_info(batch)
+            base_data, base_quota, duration, status = self._get_basic_info(batch)
+            if not status:
+                self.logger.info(f"Batch: {i+1} | на _get_basic_info | status: {status}")
+                _status = False
+                break
             if not base_data:
                 self.logger.info("_batch_run | Все видео отфильтрованы | Пропускаем получение channel/comments")
                 continue
             filtered_vids = list(base_data.keys())
-            channel_data, channel_quota = self._get_channel_info(base_data)
-            comments_data, comments_quota, failed_comments = self._get_comments(filtered_vids)
+            channel_data, channel_quota, status = self._get_channel_info(base_data)
+            if not status:
+                self.logger.info(f"Batch: {i+1} | на _get_channel_info | status: {status}")
+                _status = False
+                break
+            comments_data, comments_quota, failed_comments, status = self._get_comments(filtered_vids)
+            if not status:
+                self.logger.info(f"Batch: {i+1} | на _get_comments | status: {status}")
+                _status = False
+                break
             batch_duration = time.time() - start_time
             valid_vids = [vid for vid in base_data.keys() if vid in channel_data and vid in comments_data]
             batch_result = self._batch_aggregation(
                 valid_vids, base_data, channel_data, comments_data, batch_duration, base_quota, channel_quota, comments_quota, failed_comments, previous_data or {}
             )            
             batch_results.append(batch_result)
-        return batch_results
+        return batch_results, _status
 
     def _get_max_results_and_pages(self, nums):
-        return min(100, nums), (nums // 100) + 1 if nums >= 100 else 1
+        return min(100, nums), min(9, (nums // 100) + 1 if nums >= 100 else 1)
 
     def _datetime2interval(self, published_at: str) -> str:
         published_at = datetime.fromisoformat(published_at.replace("Z", ""))
@@ -2197,12 +2168,14 @@ class Fetcher():
                         self.logger.info(f"search_categories | Фильтрация: {self.FILTER_LOGIC} | MIN_LIKE: {self.MIN_LIKE_COUNT} | MIN_VIEWS: {self.MIN_VIEW_COUNT} | MIN_COMMENT: {self.MIN_COMMENT_COUNT} | MAX_DURATION: {self.MAX_DURATION_SECONDS} сек")
 
                         max_results, pages = self._get_max_results_and_pages(nums)
+                        
+                        status, responses, _time = True, ["-4VtJL5HJsE","-GCOoUreBOI","-VsgIur3i-g","06krzPuPGSQ","0NXy0U6hNWE","0OGbhK6MW6g","0SvCYoW6azA","0cP9CnLD1w4","0ekFemh9YK4","0zoIWudtVfA","13xIfkW4eRY","17ciDFIZ8vU","1JFD_r_eqUI","1LkS6h3AEvY","1Sfx7cEBfpU","1iztN7HVyls","1klpjyk4shU","27G-TgRizs0","2COMBhy68ug","2G9VHahmNH0","2X4VjvzdnlI","2obURQNa7h0","2ojd13kqoi8","39DH1sWLRY4","3EHqlWc2AqA","3L3AS8ZdVVI","3Q6Mgoph0bo","3WttHR66fCY","3eUuO8NYMAM","3g_8DwsqgyQ","3iYpkMjT2Bg","4G4ZPbCPxk0","4IBCOXigykg","4Nffh6Voku4","4hW1b7Eep-8","4pZ8kxQWNp0","54zvapg4eeA","5F796MdbVEs","5_0GTI_O46g","5cCeLE2BBTg","5fVCA0lcQs4","5ighvarMB2Y","68lb8-Wf07o","6QFcSGhQRqw","6jgYFIXvLNg","6t4ApkcwaIU","6v-RWltRqRo","6vGfC-ESAXw","6wH9OTiL8Fk","76f1r5JnXZs","773VGL17axc","7R8Nci_F7go","7RWe7KvsUeo","7VlJUzWg6GM","7lfvmLMBPyk","7mdKCVUVZUY","887r7plJJOU","8EqFQcN7puI","8Ssl9LYYr9M","8kZJWUgeCJ8","9NumWB0b9Xg","9ZPDrgiYNC0","9zZyLBzgLds","A8GVAzJzKaU","AMLu3I4AASs","AoBRPaQD20s","B8r0bMoKSCU","BN7zZCh9_8g","BU7ETglqkO4","BYlRPsIlvlk","C2HPWCSUx-8","CGRZWz5-XdU","CK0BRGqkZ7k","CaRgKK-0uA8","CkO3T8sKs6s","ClKgUg7aIAI","CvSUXznPWbY","D1kfhbSsrM4","D5v-hxkkWbg","DZp1dZxihMc","D_Np-Q6NmhM","DeRsN4o-mG0","FB6grcVjvn8","FZR1pNpvjyA","FapeD29Ic-U","FdCMiQ-ALp0","FdYGlk5XMNc","Fg_7aPpj7kM","Fq3EXe2ZWjU","FrEbpIS0E70","FswT5zrc2-0","FzPOoQ-el1k","G-JDO1dWIt8","GB7sucLXKO8","GLuq9DP7wIg","GOrZEGEY5mo","GVSk614XPaY","Gh0nZGztBLc","GkDao3JVHpQ","GllSyzxsi0M","HGzKg_MjREY","HMfYO3JCF_I","HP9ZQXtu55g","HUwbaIZI-go","HVCTqLJuV-o","Hmt_7tQIKyY","HuyNdTcheXo","I42NgDNoP3I","ILIhO1R04iQ","INgX4Lvtnzc","Ifl_iFruLKE","IlVHZiX9DcI","Ior14Sxt5oM","JSZEAYLPSF0","JUg658Btx9M","JaY2v-At04c","JfA7EsHiWkw","Jg4ktnb6qvY","Ji0Apo8u0a8","JlztJVpemIc","JzIuZVqM460","K0P9oRh48oU","K7FvX8zJHqw","KDCtvmImK8M","KF3_U-Nc_2M","Ka5YGnNe2JU","KpwrvkdahLk","Kr0L3cRR4Yw","Kr9Bpsg_fys","Kx0H2eulp1E","LGi9ICUuqiU","LRc6o1GaXco","LYvyeIUPtv0","LhovSlY6Lwc","LmTsgJ31pXk","LsgeyXkaMQE","LsiGllCnfhk","M5WAvmnJfFk","M61tH8CoU7Y","MMDGuCu0HxA","MUjoy-WlS7s","Mijy5xsKcVQ","Mlg-bKF1Q8A","NLDUMyy66IQ","O7_MJ_AYTcE","O7dTRD46ndI","O7xd6858s90","O9j9CjI0K1U","OBhl-Gksh0I","OGk21_ENsEM","OV2bE_Jwv_I","O_zNBVkmo7Y","Odb_I4nEf3U","OgOV8XjfaKw","OuMnLVV1K_I","OvCU_RIU3n8","P2mcHZ5dfK8","P3Cg2AjUpQc","PZre1WHD9vY","Pf2favEeyFI","PgFsf3jaFYU","PqHyOojbnK4","PwOCyfQledA","Q2H2e1UrOHw","Q6RWi0NKbuE","QBM6atqeA74","QIs6exnyenQ","QMXjbnVbyuk","QZL1afOJMKo","QZv972NPRnw","ROHrhruugzA","ReC76mkgGj8","RhNtezOT51s","RoydJiS3Rqg","Rp-_s6XHWsQ","RpOCuQV2VW8","S-TnFhbO9YM","S7geTOzYOnQ","SQJKRQXjE6A","SVLnbcd3CiM","T3S8rYucfV8","TCWb7jhiu5k","TDNZk1vhyvA","TLn0R-oJ1nY","TpIoX18rQwQ","U9fIaayaMNo","UWhlZj6QwCg","UcZYMo16b98","V8AlGCt39sk","VjaPyWi6W5I","Vk48oW8KqbA","W1allGZiDvY","Wmg0xP_ZhvY","WmtL9gi_O0g","X0IWSxWAZTc","X2-KOtlodBs","X6kmXLOpz1c","X8TEctKYv9Y","XHrlDcHnYGI","XIf2foXdBPI","XNNnQr_n6mM","XfKzWPiIjx0","Y-7L2_1PoKo","Y10RmVfMnaw","Y6-gAAJYMNc","YBm75Bdsluk","YGKz9wwP5ck","YVc2WgRcXKU","YlVu5yzOgi8","Z5WjCSkSgDw","Z9XL_wocdxc","ZArefjuMsIM","ZZShwdZ5hwk","ZqkOqdAgkvk","ZrSyGre7iw8","_EntCI4lgPs","aDl_pfjZvZo","av5Ist6lvtQ","axmQvAiqz8g","b-U5OBKBD4o","b0xOasGhF0A","bSYdag2IiYQ","bvq1Oq7wi9Q","cOAOH9EAJx0","cZKS6U3tvF8","c_1Dd0Re9y8","chdRqXFEtN4","clmmhHR5u6w","dFGWzufRegw","dIghUtti5XM","df4NukBT60s","do15THChDlo","dvr4YUkwC8s","eBhEw6-P9Jw","ekA01AR5X84","eoyR6TJEdMU","fIK0KweBU-A","fbC8SzLDvU0","fouuyOx3XMk","fsHQqnVq198","ftnu-5QX-xo","gH86PLqODmE","gRE_hleIRCI","gTpWgZa9uTw","gWxtKqeWezc","gdZpIwMjmUU","gerX8T8xbxk","h-tc7wod-KE","hhEcpRTDxZM","hi7qYwKrtK4","hia860lAgWY","iH7oXOHM8xc","iO1uVY1X2wM","iZYk1hQrgtM","ip7voF-d7g8","ipain-e_EL4","j4wvZef6OHc","jWeB-0WVjos","jWoipRg4PmU","jpDBRCVeCjM","jvjmMk_nGRM","jvuobrfG6g4","kCGSmrwS5qc","kKx3np2KLlI","kV1BcHvh3XY","kYMfDDlfKJs","kbtqRdTJ6GU","ke_t3XNK0yQ","khpMktcug_I","ks2SA3NoEVE","l9YCZ9AiX7U","lKBM4xchIbo","lmT2tjvj5fo","lvfCW3o5fq4","mRZm58oX9FM","mfpK5FeZjx4","mwA95Ztvb_E","myyc5AwPuCM","nEVC0wyNdzk","nG6rq8nHYy4","nRCRgFUj5Hs","nSGysmABCeE","nSj0bbA4VsY","njU6hBKZS54","o3Y9OPa3JFQ","obdZdPZwHAc","oirip8-FZpE","owtqJF-izMs","p3wcHNVRllg","pJ3xxM_3l98","pLXQCadWViM","pSliZZTl-n8","peqPcLPUS7M","poRr4z165kY","q2WTHsvO8Bg","qO9Gm5PRlaA","qR7Z_1zLLcQ","qhc_iATD-JQ","qq0zVt20-pM","qyuiQ8hfr2g","r1It62ilS5o","rGQidNjrARM","rlvt3_39H4Q","rnX06DTdU48","rz-_IF7nXz0","s3z_AEnHxdw","sDcGhLTQniw","sI4j9mL9rh4","sMZMWLzJPaU","sYICKOtb0FQ","sZLHhWv8koM","sZi8fnvWLmE","sdYe4wwlagY","t9C1c9SWbfc","tYPIyMEAEtQ","uQMgzPq4ZXE","urfbKwtZB5E","v2dBb23oo4k","v5NWWagiRMo","v6feCqOVlm0","vGOyhMMlDEw","vLjXcGqBsqo","vhmJs-L9z_I","vob9W9f0J3k","wY-Igl0CT28","wnIgcLQtXLI","wndWvRO1ilQ","x2YvOOHCw6s","x2r5GmFNhr8","x2xF4ixnyRM","xHVVdLQfOCc","xLcoInuBHkM","xSYqNxK-cPQ","xUj7ymS1rV8","xpAqe-7f7xk","xyjttEctxQk","yAIrw_JcUQ4","yHTqwtjiOc8","yTxaaGXxSDQ","yU-yznOxjwQ","yUkB17wA8fE","yZR7S_WXb7c","yetK-ZfgZow","yvx34nayNBI","zLekDwH58Ac","zgHZjPyhqtU","zhREh4x7-fo","zx_aXmlRrxg"], 10
+                        
+                        # self.search_videos_with_pagination(query=query, published_after=published_after, max_results=max_results, max_pages=pages)
 
-                        status, responses, _time = self.search_videos_with_pagination(query=query, published_after=published_after, max_results=max_results, max_pages=pages)
+                        self.logger.info(f"Пришло с search: {len(responses)} | status: {status}")
 
-                        self.logger.info(f"Пришло с search: {len(responses)}")
-
-                        batch_results = self._batch_run(responses)
+                        batch_results, status = self._batch_run(responses)
 
                         results, added_vids = self.distribute_to_intervals(batch_results, cat, results)
                         results = self._append_query(query, cat, results)

@@ -38,9 +38,10 @@ except ImportError:
     print("Warning: huggingface_hub is not installed. Install it with: pip install huggingface_hub")
 
 # Определяем корень проекта относительно этого файла
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Здесь root — это директория, в которой лежит metrics.py (т.е. сам проект MetaFetcher)
+_project_root = os.path.dirname(os.path.abspath(__file__))
 
-# Основная директория результатов для fetcher
+# Основная директория результатов для fetcher (./.results/fetcher внутри проекта)
 FETCHER_RESULTS_DIR = os.path.join(_project_root, ".results", "fetcher")
 # Директория результатов для yt_dlp
 YT_DLP_RESULTS_DIR = os.path.join(_project_root, ".results", "fetcher", "yt_dlp")
@@ -2543,3 +2544,5 @@ if __name__ == "__main__":
     httpd.serve_forever()
 
 
+
+"AIzaSyBnDx9tmUlnXVp53YP4qLnFDRIQyxWWZso","AIzaSyBJRqU4WmhRiLWiwVksGY3cko1LK2FRMk0","AIzaSyDFG9Ekykd86a0Zu8DjUFikPd3J9G5HOJo","AIzaSyBL4KXVptpZtobUYL198WSVKaYUn9GoZGg","AIzaSyCCCR0gw2QmcG2EB2q9g1IjM95Woj7Sin8","AIzaSyD3cFsn19TfMSmt_BDauhlyWZWLtEfH_Uc","AIzaSyBYKGEA8Vs6xfLdFS2BES8ZhRR0xkfQXnM","AIzaSyC3Q1uEb7bFAD5W-EE4sU2SOaXRd8WHYzQ","AIzaSyCUpKd89t3P3h0-3Hu5mS2wUBLNwnFHGvs","AIzaSyDW3NppaTLjRuJcs6hHKsV_WfMK78M5WlY","AIzaSyDoPQek_Tjivmknj4u9WuPzJtQrhNyTOHI","AIzaSyAGTVbaRYs0UQAt6WwDDW9ZC6OENirqW94","AIzaSyABLcNEXOlcwZaWCJIFqY8ll2zFdxq9OeM","AIzaSyB9uuC1jiqM8Qzvfk-m2wg2__FiL0ZBjzI","AIzaSyAdZlD-M0jLnhnhxrqrCps4b8pVMy3VVQQ","AIzaSyAo_h1TFfSstq5jiyMZwsj31bNFqgMi2yU","AIzaSyCNwSvOxM7wPnKFx-4O4Wv5hQM4XqGDARw","AIzaSyAqw2GdZowaSHRtQZy8uG9qXIRzYf5PK28","AIzaSyBxIqEBLdXb-NG7O6jPUXXKzgxrOSKFzEQ","AIzaSyDW12dITGsF0PoZ3z31ygUVIZF5wFqj0MQ","AIzaSyDa4jZu1EwKpeXHfE5wcN4YlhOvkTPXQWo","AIzaSyAk8tXJqDkEfp6PIWmUDs2eIeWyKLlNJhM","AIzaSyBLJORxeKsCeU5OsX52MDkW8QYI0MOPtJY","AIzaSyCPl6vSxstcYYKP7HR-b0KQdgpMqtBWZkY","AIzaSyBaABTE58mF5RK9rkl5mCslWQRTHk-l0Fc","AIzaSyDyzOYsD4SUBiVjdBrQfHxArquZrpTTxZ8","AIzaSyCsuAhHWlqEmPr63-IL24jGkfSxW6w3UDU","AIzaSyD5v6Q2mpD_tqEmIXapImPJvI1tWNp9oi8","AIzaSyD9nQpCwIGtz3-KI-sRPxlTi_j6lzHplTU","AIzaSyBzRcjv6FW7IrrONHBUN8nJt4uz0GxTG7Y","AIzaSyDRvRs-7ARMP9F_LDS9iAckO1QM-qtjsxg","AIzaSyCA_grTOF80YE7Wl01eKAAvxDHsCzM6SaI","AIzaSyBe7PhfSXCwkCsd22ckL0kLhoGKdfTFu4Q","AIzaSyDoIkab5NOucUHOpulyGpZHMIhmERMtmb4","AIzaSyB-PHatagRwTjFHC6s4UbXpADDehN0-PeU","AIzaSyCaXAIgVt1muG0DVN7ZTBEQ2Dw88QDZtXY"

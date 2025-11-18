@@ -17,9 +17,10 @@ echo "Рабочая директория: $SCRIPT_DIR"
 
 # Шаг 1: Создание директории .results
 echo ""
-echo "1. Создание директории .results..."
+echo "1. Создание директории .results и .tmp"
 mkdir -p .results
-echo "✓ Директория .results создана"
+mkdir -p .tmp
+echo "✓ Директория .results и .tmp созданы"
 
 # Шаг 2: Установка cloudflared
 echo ""
@@ -76,39 +77,39 @@ create_window() {
 
 # Шаг 3: Окно 1 - fetcher2.py
 echo "4. Запуск fetcher2.py в окне 1..."
-create_window 1 "fetcher2" "python3 fetcher2.py"
+create_window 1 "fetcher2" ".venv/bin/python fetcher2.py"
 sleep 1
 
 # Шаг 4: Окно 2 - _yt_dlp/main_yt_dlp.py
 echo "5. Запуск _yt_dlp/main_yt_dlp.py в окне 2..."
-create_window 2 "yt_dlp" "python3 _yt_dlp/main_yt_dlp.py"
+create_window 2 "yt_dlp" ".venv/bin/python _yt_dlp/main_yt_dlp.py"
 sleep 1
 
 # Шаг 5: Окно 3 - main_hf.py
 echo "6. Запуск main_hf.py в окне 3..."
-create_window 3 "main_hf" "python3 main_hf.py"
+create_window 3 "main_hf" ".venv/bin/python main_hf.py"
 sleep 1
 
 # Шаг 6: Окно 4 - downloader.py
 echo "7. Запуск downloader.py в окне 4..."
-create_window 4 "downloader" "python3 downloader.py"
+create_window 4 "downloader" ".venv/bin/python downloader.py"
 sleep 1
 
 # Шаг 7: Окно 5 - metrics.py
 echo "8. Запуск metrics.py в окне 5..."
-create_window 5 "metrics" "python3 metrics.py"
+create_window 5 "metrics" ".venv/bin/python metrics.py"
 sleep 1
 
 # Шаг 8: Окно 6 - prometheus
 echo "9. Запуск prometheus в окне 6..."
 # Проверяем наличие prometheus
 if command -v prometheus &> /dev/null; then
-    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9090\""
+    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
 elif [ -f "./prometheus" ]; then
-    PROMETHEUS_CMD="./prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9090\""
+    PROMETHEUS_CMD="./prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
 else
     echo "⚠ prometheus не найден, используем команду 'prometheus' (может не работать)"
-    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9090\""
+    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
 fi
 create_window 6 "prometheus" "$PROMETHEUS_CMD"
 sleep 1
@@ -116,10 +117,10 @@ sleep 1
 # Шаг 9: Окно 7 - cloudflared
 echo "10. Запуск cloudflared в окне 7..."
 if command -v cloudflared &> /dev/null; then
-    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9090"
+    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9091"
 else
     echo "⚠ cloudflared не найден в PATH"
-    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9090"
+    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9091"
 fi
 sleep 1
 

@@ -278,7 +278,9 @@ class VideoDownloader:
                 
                 # Команда yt-dlp
                 cmd = [
-                    "yt-dlp",
+                    ".venv/bin/python",
+                    "-m"
+                    "yt_dlp",
                     "-f", format_id,
                     "-o", output_template,
                     webpage_url
