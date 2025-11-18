@@ -1,0 +1,73 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.env/
+.env*
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Data / outputs (adjust as needed)
+data/
+outputs/
+downloads/
+.cache/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Credentials / tokens (patterns)
+*.pem
+*.key
+*.crt
+*.p12
+*.json
+*.yaml
+*.yml
+!requirements*.txt
+!environment*.yml
+
+# Common secret files
+secrets*/
+credentials*/
+config*/
+.token*
+*token*
+*apikey*
+*api_key*
+*secret*
+
+# Project-specific (adjust if needed)
+_yt_api/.cache/
+_yt_dlp/.cache/
+.huggingface/
+
+# Python tooling
+.mypy_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Cloudflared (usually outside repo, but just in case)
+cloudflared.yml
+cert.pem
+
+
