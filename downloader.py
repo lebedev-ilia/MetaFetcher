@@ -6,6 +6,8 @@ import shutil
 import logging
 import tempfile
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, Set, List, Optional, Any
 from pathlib import Path
@@ -48,7 +50,7 @@ if not logger.handlers:
 YT_DLP_RESULTS_DIR = ".results/fetcher/yt_dlp"
 TEMP_DOWNLOAD_DIR = ".tmp"
 CHECK_INTERVAL = 120  # 2 минуты
-BATCH_SIZE = 4  # Размер батча для обработки видео
+BATCH_SIZE = 8  # Размер батча для обработки видео
 
 
 class VideoDownloader:
@@ -77,6 +79,7 @@ class VideoDownloader:
         self.repo_type = repo_type
         self.token = token
         self.api = HfApi(token=token)
+        self.cookie_lock = threading.Lock()
         
         # Инициализируем менеджер ротации cookies
         if COOKIE_MANAGER_AVAILABLE:
@@ -274,7 +277,8 @@ class VideoDownloader:
                 # Получаем текущий cookie
                 current_cookie = None
                 if self.cookie_manager:
-                    current_cookie = self.cookie_manager.get_current_cookie()
+                    with self.cookie_lock:
+                        current_cookie = self.cookie_manager.get_current_cookie()
                 
                 # Команда yt-dlp
                 cmd = [
@@ -334,7 +338,8 @@ class VideoDownloader:
                     # Если блокировка или таймаут, и есть еще попытки - ротируем cookie
                     if (is_blocked or is_timeout) and cookie_attempt < max_cookie_attempts - 1:
                         if self.cookie_manager:
-                            next_cookie = self.cookie_manager.rotate_to_next()
+                            with self.cookie_lock:
+                                next_cookie = self.cookie_manager.rotate_to_next()
                             error_type = "Таймаут" if is_timeout else "Блокировка"
                             logger.warning(
                                 f"Ошибка скачивания видео {video_id} с форматом {format_id}: {error_type}. "
@@ -353,7 +358,8 @@ class VideoDownloader:
                     # При таймауте пробуем следующий cookie, если есть
                     if cookie_attempt < max_cookie_attempts - 1:
                         if self.cookie_manager:
-                            self.cookie_manager.rotate_to_next()
+                            with self.cookie_lock:
+                                self.cookie_manager.rotate_to_next()
                             logger.warning(
                                 f"Таймаут при скачивании видео {video_id} с форматом {format_id}. "
                                 f"Повторяю с новым cookie..."
@@ -446,29 +452,36 @@ class VideoDownloader:
         video_files_to_upload = []
         
         try:
-            # Скачиваем видео
-            for video_id, video_data in batch_videos.items():
+            def process_video(video_id: str, video_data: Dict[str, Any]) -> Optional[tuple]:
                 try:
-                    # Скачиваем во временную директорию
                     downloaded_file = self.download_video(video_id, video_data, temp_download_dir)
+                    if not downloaded_file:
+                        return None
                     
-                    if downloaded_file:
-                        # Определяем путь в HF (просто video_id с расширением)
-                        file_name = os.path.basename(downloaded_file)
-                        hf_path = file_name
-                        
-                        # Копируем файл в директорию для загрузки
-                        upload_file_path = os.path.join(temp_upload_dir, hf_path)
-                        shutil.copy2(downloaded_file, upload_file_path)
-                        
-                        video_files_to_upload.append((video_id, upload_file_path, hf_path))
-                        successfully_processed.add(video_id)
-                        
-                        logger.info(f"Подготовлено для загрузки: {video_id} -> {hf_path}")
+                    file_name = os.path.basename(downloaded_file)
+                    hf_path = file_name
+                    upload_file_path = os.path.join(temp_upload_dir, hf_path)
+                    shutil.copy2(downloaded_file, upload_file_path)
                     
+                    logger.info(f"Подготовлено для загрузки: {video_id} -> {hf_path}")
+                    return (video_id, upload_file_path, hf_path)
                 except Exception as e:
                     logger.error(f"Ошибка при обработке видео {video_id}: {e}")
-                    continue
+                    return None
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_to_video = {
+                    executor.submit(process_video, video_id, video_data): video_id
+                    for video_id, video_data in batch_videos.items()
+                }
+                
+                for future in as_completed(future_to_video):
+                    result = future.result()
+                    if not result:
+                        continue
+                    video_id, upload_file_path, hf_path = result
+                    video_files_to_upload.append((video_id, upload_file_path, hf_path))
+                    successfully_processed.add(video_id)
             
             # Загружаем батч в HF
             if video_files_to_upload:
@@ -601,3 +614,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    

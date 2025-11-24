@@ -225,6 +225,15 @@ class Fetcher():
 
         self.existing_meta_data, self.seq, self.existing_snapshot_data, self.target2ids, self.latest_snapshot_folder = self.get_snapshot_data()
         
+        self.existing_meta_ids = set()
+        if self.seq:
+            for timestamp, vids in self.seq.items():
+                for vid in vids:
+                    self.existing_meta_ids.add(vid)
+            self.logger.info(f"init | existing_meta_ids: {len(self.existing_meta_ids)}")
+        else:           
+            self.logger.warning("init | existing_meta_ids is empty")
+        
         if not self.existing_meta_data and not self.seq and not self.existing_snapshot_data and not self.target2ids:
             self.snapshot_num = 0
             self.first_start = True
@@ -245,7 +254,7 @@ class Fetcher():
         self.MIN_VIEW_COUNT = 0
         self.MIN_LIKE_COUNT = 0
         self.MIN_COMMENT_COUNT = 0
-        self.MAX_DURATION_SECONDS = 900  # Максимальная длительность видео в секундах
+        self.MAX_DURATION_SECONDS = 1200  # Максимальная длительность видео в секундах
         self.MAX_VIEW_COUNT = float('inf')  # Бесконечность по умолчанию (нет ограничения)
         self.MAX_LIKE_COUNT = float('inf')
         self.MAX_COMMENT_COUNT = float('inf')
@@ -262,14 +271,14 @@ class Fetcher():
         self.logger.info(f"init | Логика фильтрации: {self.FILTER_LOGIC}")
 
         self.TIME_INTERVALS_NUM_VIDEOS = {
-            "less-1day": 400, 
-            "1day-1week": 600, 
-            "1week-1month": 800, 
-            "1month-3month": 800, 
-            "3month-6month": 800, 
-            "6month-1year": 600, 
-            "1year-3year": 400, 
-            "3year-more": 350
+            "less-1day": 900, 
+            "1day-1week": 1130, 
+            "1week-1month": 1400, 
+            "1month-3month": 1640, 
+            "3month-6month": 1250, 
+            "6month-1year": 1080, 
+            "1year-3year": 950, 
+            "3year-more": 700
         } 
 
         self.VIDEOS_PER_CAT = sum(self.TIME_INTERVALS_NUM_VIDEOS.values())
@@ -1382,9 +1391,6 @@ class Fetcher():
         total_quota = 0
         failed_videos = set()
         status = True
-        
-        self.logger.info("")
-        self.logger.info(f"_get_comments | Запрос: {len(vids)} | Потоков: {self.MAX_WORKERS}")
 
         if not vids:
             self.logger.info("_get_comments | Пустой список видео | Пропускаем запрос")
@@ -1417,8 +1423,6 @@ class Fetcher():
             
         if self.current_key_index >= len(self.KEYS):
             status = False
-        
-        self.logger.info(f"_get_comments | На выходе: {len(all_comments)} | Квота: {total_quota} | Ошибок: {len(failed_videos)}")
         
         return all_comments, total_quota, failed_videos, status
 
@@ -1513,20 +1517,10 @@ class Fetcher():
         
         # Логируем метрики по длительности
         total_duration_videos = duration_less_900 + duration_more_900
-        if total_duration_videos > 0:
-            self.logger.info(
-                f"_min_val_filter | Длительность видео: < 900 сек: {duration_less_900}, "
-                f">= 900 сек: {duration_more_900}, всего с duration: {total_duration_videos}"
-            )
         
         # Логируем распределение duration_seconds для прошедших фильтр
         if len(self.DURATION_ARR) > 0:
             duration_arr_np = np.array(self.DURATION_ARR)
-            self.logger.info(
-                f"_min_val_filter | Распределение duration_seconds (прошедшие фильтр): "
-                f"min={duration_arr_np.min():.1f}, max={duration_arr_np.max():.1f}, "
-                f"mean={duration_arr_np.mean():.1f}, median={np.median(duration_arr_np):.1f}"
-            )
 
         return filter_items, main_cnt, filtered_cnt
 
@@ -1619,7 +1613,6 @@ class Fetcher():
     def _get_basic_info(self, vids: list) -> dict:
         len_vids = len(vids)
         
-        self.logger.info("")
         self.logger.info(f"get_basic_info | Запрос: {len_vids}")
         
         if len_vids > 1:
@@ -1647,9 +1640,7 @@ class Fetcher():
                     self.logger.info(f"get_basic_info | Min val filter | После фильтрации: {filtered_cnt}")
                     self._correct_min_values()
 
-                items = self._base_attributes_filter(response=response if self.temporal else filter_items, temporal=self.temporal)
-                
-                self.logger.info(f"get_basic_info | На выходе: {len(items)} | Квота: {quota}")    
+                items = self._base_attributes_filter(response=response if self.temporal else filter_items, temporal=self.temporal)   
 
                 return items, quota, duration, True
 
@@ -1766,9 +1757,6 @@ class Fetcher():
         items = {}
         total_quota = 0
         
-        self.logger.info("")
-        self.logger.info(f"_get_channel_info | Запрос: {len(base_info)} | Потоков: {self.MAX_WORKERS}")
-        
         if not base_info:
             self.logger.info("_get_channel_info | Пустой список видео | Пропускаем запрос")
             return items, total_quota
@@ -1808,7 +1796,6 @@ class Fetcher():
                 except Exception as e:
                     self.logger.warning(f"_get_channel_info | Ошибка при обработке {vid} (channel_id: {channel_id}): {e}")
         
-        self.logger.info(f"_get_channel_info | На выходе: {len(items)} | Квота: {total_quota}")
         return items, total_quota, status
 
     def _batching(self, vids: list) -> list:
@@ -2085,6 +2072,9 @@ class Fetcher():
 
             self.logger.info(" | ".join(msg_parts))
         self.logger.info("")
+        
+    def filt_duplicates(self, vids: list) -> list:
+        return [vid for vid in vids if vid not in self.existing_meta_ids]
 
     def search_categories(self):
         # Инициализируем results для работы с категориями
@@ -2169,16 +2159,18 @@ class Fetcher():
 
                         max_results, pages = self._get_max_results_and_pages(nums)
                         
-                        status, responses, _time = True, ["-4VtJL5HJsE","-GCOoUreBOI","-VsgIur3i-g","06krzPuPGSQ","0NXy0U6hNWE","0OGbhK6MW6g","0SvCYoW6azA","0cP9CnLD1w4","0ekFemh9YK4","0zoIWudtVfA","13xIfkW4eRY","17ciDFIZ8vU","1JFD_r_eqUI","1LkS6h3AEvY","1Sfx7cEBfpU","1iztN7HVyls","1klpjyk4shU","27G-TgRizs0","2COMBhy68ug","2G9VHahmNH0","2X4VjvzdnlI","2obURQNa7h0","2ojd13kqoi8","39DH1sWLRY4","3EHqlWc2AqA","3L3AS8ZdVVI","3Q6Mgoph0bo","3WttHR66fCY","3eUuO8NYMAM","3g_8DwsqgyQ","3iYpkMjT2Bg","4G4ZPbCPxk0","4IBCOXigykg","4Nffh6Voku4","4hW1b7Eep-8","4pZ8kxQWNp0","54zvapg4eeA","5F796MdbVEs","5_0GTI_O46g","5cCeLE2BBTg","5fVCA0lcQs4","5ighvarMB2Y","68lb8-Wf07o","6QFcSGhQRqw","6jgYFIXvLNg","6t4ApkcwaIU","6v-RWltRqRo","6vGfC-ESAXw","6wH9OTiL8Fk","76f1r5JnXZs","773VGL17axc","7R8Nci_F7go","7RWe7KvsUeo","7VlJUzWg6GM","7lfvmLMBPyk","7mdKCVUVZUY","887r7plJJOU","8EqFQcN7puI","8Ssl9LYYr9M","8kZJWUgeCJ8","9NumWB0b9Xg","9ZPDrgiYNC0","9zZyLBzgLds","A8GVAzJzKaU","AMLu3I4AASs","AoBRPaQD20s","B8r0bMoKSCU","BN7zZCh9_8g","BU7ETglqkO4","BYlRPsIlvlk","C2HPWCSUx-8","CGRZWz5-XdU","CK0BRGqkZ7k","CaRgKK-0uA8","CkO3T8sKs6s","ClKgUg7aIAI","CvSUXznPWbY","D1kfhbSsrM4","D5v-hxkkWbg","DZp1dZxihMc","D_Np-Q6NmhM","DeRsN4o-mG0","FB6grcVjvn8","FZR1pNpvjyA","FapeD29Ic-U","FdCMiQ-ALp0","FdYGlk5XMNc","Fg_7aPpj7kM","Fq3EXe2ZWjU","FrEbpIS0E70","FswT5zrc2-0","FzPOoQ-el1k","G-JDO1dWIt8","GB7sucLXKO8","GLuq9DP7wIg","GOrZEGEY5mo","GVSk614XPaY","Gh0nZGztBLc","GkDao3JVHpQ","GllSyzxsi0M","HGzKg_MjREY","HMfYO3JCF_I","HP9ZQXtu55g","HUwbaIZI-go","HVCTqLJuV-o","Hmt_7tQIKyY","HuyNdTcheXo","I42NgDNoP3I","ILIhO1R04iQ","INgX4Lvtnzc","Ifl_iFruLKE","IlVHZiX9DcI","Ior14Sxt5oM","JSZEAYLPSF0","JUg658Btx9M","JaY2v-At04c","JfA7EsHiWkw","Jg4ktnb6qvY","Ji0Apo8u0a8","JlztJVpemIc","JzIuZVqM460","K0P9oRh48oU","K7FvX8zJHqw","KDCtvmImK8M","KF3_U-Nc_2M","Ka5YGnNe2JU","KpwrvkdahLk","Kr0L3cRR4Yw","Kr9Bpsg_fys","Kx0H2eulp1E","LGi9ICUuqiU","LRc6o1GaXco","LYvyeIUPtv0","LhovSlY6Lwc","LmTsgJ31pXk","LsgeyXkaMQE","LsiGllCnfhk","M5WAvmnJfFk","M61tH8CoU7Y","MMDGuCu0HxA","MUjoy-WlS7s","Mijy5xsKcVQ","Mlg-bKF1Q8A","NLDUMyy66IQ","O7_MJ_AYTcE","O7dTRD46ndI","O7xd6858s90","O9j9CjI0K1U","OBhl-Gksh0I","OGk21_ENsEM","OV2bE_Jwv_I","O_zNBVkmo7Y","Odb_I4nEf3U","OgOV8XjfaKw","OuMnLVV1K_I","OvCU_RIU3n8","P2mcHZ5dfK8","P3Cg2AjUpQc","PZre1WHD9vY","Pf2favEeyFI","PgFsf3jaFYU","PqHyOojbnK4","PwOCyfQledA","Q2H2e1UrOHw","Q6RWi0NKbuE","QBM6atqeA74","QIs6exnyenQ","QMXjbnVbyuk","QZL1afOJMKo","QZv972NPRnw","ROHrhruugzA","ReC76mkgGj8","RhNtezOT51s","RoydJiS3Rqg","Rp-_s6XHWsQ","RpOCuQV2VW8","S-TnFhbO9YM","S7geTOzYOnQ","SQJKRQXjE6A","SVLnbcd3CiM","T3S8rYucfV8","TCWb7jhiu5k","TDNZk1vhyvA","TLn0R-oJ1nY","TpIoX18rQwQ","U9fIaayaMNo","UWhlZj6QwCg","UcZYMo16b98","V8AlGCt39sk","VjaPyWi6W5I","Vk48oW8KqbA","W1allGZiDvY","Wmg0xP_ZhvY","WmtL9gi_O0g","X0IWSxWAZTc","X2-KOtlodBs","X6kmXLOpz1c","X8TEctKYv9Y","XHrlDcHnYGI","XIf2foXdBPI","XNNnQr_n6mM","XfKzWPiIjx0","Y-7L2_1PoKo","Y10RmVfMnaw","Y6-gAAJYMNc","YBm75Bdsluk","YGKz9wwP5ck","YVc2WgRcXKU","YlVu5yzOgi8","Z5WjCSkSgDw","Z9XL_wocdxc","ZArefjuMsIM","ZZShwdZ5hwk","ZqkOqdAgkvk","ZrSyGre7iw8","_EntCI4lgPs","aDl_pfjZvZo","av5Ist6lvtQ","axmQvAiqz8g","b-U5OBKBD4o","b0xOasGhF0A","bSYdag2IiYQ","bvq1Oq7wi9Q","cOAOH9EAJx0","cZKS6U3tvF8","c_1Dd0Re9y8","chdRqXFEtN4","clmmhHR5u6w","dFGWzufRegw","dIghUtti5XM","df4NukBT60s","do15THChDlo","dvr4YUkwC8s","eBhEw6-P9Jw","ekA01AR5X84","eoyR6TJEdMU","fIK0KweBU-A","fbC8SzLDvU0","fouuyOx3XMk","fsHQqnVq198","ftnu-5QX-xo","gH86PLqODmE","gRE_hleIRCI","gTpWgZa9uTw","gWxtKqeWezc","gdZpIwMjmUU","gerX8T8xbxk","h-tc7wod-KE","hhEcpRTDxZM","hi7qYwKrtK4","hia860lAgWY","iH7oXOHM8xc","iO1uVY1X2wM","iZYk1hQrgtM","ip7voF-d7g8","ipain-e_EL4","j4wvZef6OHc","jWeB-0WVjos","jWoipRg4PmU","jpDBRCVeCjM","jvjmMk_nGRM","jvuobrfG6g4","kCGSmrwS5qc","kKx3np2KLlI","kV1BcHvh3XY","kYMfDDlfKJs","kbtqRdTJ6GU","ke_t3XNK0yQ","khpMktcug_I","ks2SA3NoEVE","l9YCZ9AiX7U","lKBM4xchIbo","lmT2tjvj5fo","lvfCW3o5fq4","mRZm58oX9FM","mfpK5FeZjx4","mwA95Ztvb_E","myyc5AwPuCM","nEVC0wyNdzk","nG6rq8nHYy4","nRCRgFUj5Hs","nSGysmABCeE","nSj0bbA4VsY","njU6hBKZS54","o3Y9OPa3JFQ","obdZdPZwHAc","oirip8-FZpE","owtqJF-izMs","p3wcHNVRllg","pJ3xxM_3l98","pLXQCadWViM","pSliZZTl-n8","peqPcLPUS7M","poRr4z165kY","q2WTHsvO8Bg","qO9Gm5PRlaA","qR7Z_1zLLcQ","qhc_iATD-JQ","qq0zVt20-pM","qyuiQ8hfr2g","r1It62ilS5o","rGQidNjrARM","rlvt3_39H4Q","rnX06DTdU48","rz-_IF7nXz0","s3z_AEnHxdw","sDcGhLTQniw","sI4j9mL9rh4","sMZMWLzJPaU","sYICKOtb0FQ","sZLHhWv8koM","sZi8fnvWLmE","sdYe4wwlagY","t9C1c9SWbfc","tYPIyMEAEtQ","uQMgzPq4ZXE","urfbKwtZB5E","v2dBb23oo4k","v5NWWagiRMo","v6feCqOVlm0","vGOyhMMlDEw","vLjXcGqBsqo","vhmJs-L9z_I","vob9W9f0J3k","wY-Igl0CT28","wnIgcLQtXLI","wndWvRO1ilQ","x2YvOOHCw6s","x2r5GmFNhr8","x2xF4ixnyRM","xHVVdLQfOCc","xLcoInuBHkM","xSYqNxK-cPQ","xUj7ymS1rV8","xpAqe-7f7xk","xyjttEctxQk","yAIrw_JcUQ4","yHTqwtjiOc8","yTxaaGXxSDQ","yU-yznOxjwQ","yUkB17wA8fE","yZR7S_WXb7c","yetK-ZfgZow","yvx34nayNBI","zLekDwH58Ac","zgHZjPyhqtU","zhREh4x7-fo","zx_aXmlRrxg"], 10
+                        status, responses, _time = self.search_videos_with_pagination(query=query, published_after=published_after, max_results=max_results, max_pages=pages)
                         
-                        # self.search_videos_with_pagination(query=query, published_after=published_after, max_results=max_results, max_pages=pages)
-
-                        self.logger.info(f"Пришло с search: {len(responses)} | status: {status}")
+                        responses_filt = self.filt_duplicates(responses)
+                        
+                        self.logger.info(f"Пришло с search: {len(responses)} | Пришло с filt: {len(responses_filt)} | Дубликатов: {len(responses) - len(responses_filt)}")
 
                         batch_results, status = self._batch_run(responses)
 
                         results, added_vids = self.distribute_to_intervals(batch_results, cat, results)
                         results = self._append_query(query, cat, results)
+                        
+                        self.logger.info(f"Попало в Results: {len(batch_results)}")
 
                         new_vids = added_vids
 
@@ -2213,6 +2205,9 @@ class Fetcher():
                     except Exception as e:
                         self.logger.warning(f"search_categories | Exception | {e} | try: {_}")
                         continue
+                    
+            results[cat]["completed"] = True
+            self.save_progress(results, category=cat)
 
         raise CompleteSnapshot
 

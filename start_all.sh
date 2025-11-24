@@ -22,17 +22,6 @@ mkdir -p .results
 mkdir -p .tmp
 echo "✓ Директория .results и .tmp созданы"
 
-# Шаг 2: Установка cloudflared
-echo ""
-echo "2. Запуск установки cloudflared..."
-if [ -f "./install_cloudflared.sh" ]; then
-    chmod +x ./install_cloudflared.sh
-    ./install_cloudflared.sh
-    echo "✓ cloudflared установлен"
-else
-    echo "⚠ Файл install_cloudflared.sh не найден, пропускаем установку"
-fi
-
 # Проверка наличия tmux
 if ! command -v tmux &> /dev/null; then
     echo "❌ Ошибка: tmux не установлен. Установите tmux для продолжения."
@@ -95,34 +84,6 @@ echo "7. Запуск downloader.py в окне 4..."
 create_window 4 "downloader" ".venv/bin/python downloader.py"
 sleep 1
 
-# Шаг 7: Окно 5 - metrics.py
-echo "8. Запуск metrics.py в окне 5..."
-create_window 5 "metrics" ".venv/bin/python metrics.py"
-sleep 1
-
-# Шаг 8: Окно 6 - prometheus
-echo "9. Запуск prometheus в окне 6..."
-# Проверяем наличие prometheus
-if command -v prometheus &> /dev/null; then
-    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
-elif [ -f "./prometheus" ]; then
-    PROMETHEUS_CMD="./prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
-else
-    echo "⚠ prometheus не найден, используем команду 'prometheus' (может не работать)"
-    PROMETHEUS_CMD="prometheus --config.file=\"$SCRIPT_DIR/prometheus.yml\" --web.listen-address=\":9091\""
-fi
-create_window 6 "prometheus" "$PROMETHEUS_CMD"
-sleep 1
-
-# Шаг 9: Окно 7 - cloudflared
-echo "10. Запуск cloudflared в окне 7..."
-if command -v cloudflared &> /dev/null; then
-    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9091"
-else
-    echo "⚠ cloudflared не найден в PATH"
-    create_window 7 "cloudflared" "cloudflared tunnel --url http://localhost:9091"
-fi
-sleep 1
 
 echo ""
 echo "=== Все компоненты запущены! ==="
