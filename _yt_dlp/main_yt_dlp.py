@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, Tuple, Dict, Any, List
 
 # Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = "/content/MetaFetcher"
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -30,9 +30,9 @@ if not _global_logger.handlers:
 COOKIE_MANAGER = CookieRotationManager()
 
 # Путь к sequence.json
-SEQUENCE_PATH = os.path.join(project_root, ".results", "fetcher", "meta_snapshot", "sequence.json")
+SEQUENCE_PATH = os.path.join("/content/drive/MyDrive", ".results", "fetcher", "meta_snapshot", "sequence.json")
 # Директория для сохранения результатов yt_dlp
-YT_DLP_RESULTS_DIR = os.path.join(project_root, ".results", "fetcher", "yt_dlp")
+YT_DLP_RESULTS_DIR = os.path.join("/content/drive/MyDrive", ".results", "fetcher", "yt_dlp")
 # Прогресс обработки
 PROGRESS_PATH = os.path.join(YT_DLP_RESULTS_DIR, "progress.json")
 # Размер файла данных (количество видео)
@@ -74,7 +74,7 @@ def load_sequence() -> List[str]:
         _global_logger.info(f"[yt-dlp] Loaded {len(video_ids)} video IDs from sequence.json")
         return video_ids
     except Exception as e:
-        _global_logger.error(f"[yt-dlp] Error loading sequence.json: {e}")
+        _global_logger.warning(f"[yt-dlp] Error loading sequence.json: {e}")
         return []
 
 
@@ -94,7 +94,7 @@ def load_progress() -> set[str]:
             processed_ids = data.get("processed_video_ids", [])
             return set(processed_ids) if isinstance(processed_ids, list) else set()
     except Exception as e:
-        _global_logger.error(f"[yt-dlp] Error loading progress: {e}")
+        _global_logger.warning(f"[yt-dlp] Error loading progress: {e}")
         return set()
 
 
@@ -114,7 +114,7 @@ def save_progress(processed_ids: set[str]) -> None:
         with open(PROGRESS_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        _global_logger.error(f"[yt-dlp] Error saving progress: {e}")
+        _global_logger.warning(f"[yt-dlp] Error saving progress: {e}")
 
 
 def get_existing_data_files() -> List[str]:
@@ -194,7 +194,7 @@ def load_data_file(file_path: str) -> Dict[str, Any]:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        _global_logger.error(f"[yt-dlp] Error loading data file {file_path}: {e}")
+        _global_logger.warning(f"[yt-dlp] Error loading data file {file_path}: {e}")
         return {"_metadata": {"created_at": datetime.now().isoformat()}}
 
 
@@ -216,13 +216,13 @@ def save_data_file(file_path: str, data: Dict[str, Any]) -> None:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        _global_logger.error(f"[yt-dlp] Error saving data file {file_path}: {e}")
+        _global_logger.warning(f"[yt-dlp] Error saving data file {file_path}: {e}")
 
 
 def signal_handler(signum, frame):
     """Обработчик сигнала для корректного завершения."""
     global shutdown_requested
-    _global_logger.info(f"\n[yt-dlp] Received signal {signum}. Shutting down gracefully...")
+    _global_logger.warning(f"\n[yt-dlp] Received signal {signum}. Shutting down gracefully...")
     shutdown_requested = True
 
 
@@ -380,9 +380,9 @@ def main():
             shutdown_requested = True
             break
         except Exception as e:
-            _global_logger.error(f"[yt-dlp] Error in main loop: {e}")
+            _global_logger.warning(f"[yt-dlp] Error in main loop: {e}")
             import traceback
-            _global_logger.error(traceback.format_exc())
+            _global_logger.warning(traceback.format_exc())
             # Продолжаем работу после ошибки
             time.sleep(SCAN_INTERVAL)
     

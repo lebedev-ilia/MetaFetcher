@@ -200,7 +200,7 @@ class Fetcher():
                     self.key_manager.key_version += 1
         # Для обратной совместимости создаем youtube_service (но в параллельных методах используется key_manager)
         self.youtube_service = build('youtube', 'v3', developerKey=self.KEYS[self.current_key_index])
-        self.RESULTS_PATH = os.path.join(os.path.dirname(__file__), ".results/fetcher")
+        self.RESULTS_PATH = os.path.join("/content/drive/MyDrive", ".results/fetcher")
         os.makedirs(self.RESULTS_PATH, exist_ok=True)
         
         # Thread-safe кэш каналов (инициализируется на уровне снапшота)
@@ -2279,7 +2279,7 @@ def main():
             current_key_index = fetcher.key_manager.get_current_key_index()
             fetcher.current_key_index = current_key_index
             _global_logger.info("CompleteSnapshot")
-            continue
+            return
         except QuotaError:
             current_key_index = 0
             _global_logger.info("QuotaError")

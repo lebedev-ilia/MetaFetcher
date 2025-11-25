@@ -13,7 +13,7 @@ from typing import Dict, Set, List, Optional, Any
 from pathlib import Path
 
 # Add project root to path for importing cookie_manager
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = "/content/MetaFetcher"
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -47,7 +47,7 @@ if not logger.handlers:
     logger.addHandler(console_handler)
 
 # Константы
-YT_DLP_RESULTS_DIR = ".results/fetcher/yt_dlp"
+YT_DLP_RESULTS_DIR = "/content/drive/MyDrive/.results/fetcher/yt_dlp"
 TEMP_DOWNLOAD_DIR = ".tmp"
 CHECK_INTERVAL = 120  # 2 минуты
 BATCH_SIZE = 8  # Размер батча для обработки видео
@@ -242,6 +242,10 @@ class VideoDownloader:
         """
         webpage_url = video_data.get("webpage_url")
         formats = video_data.get("formats", [])
+        seconds = video_data.get("duration_seconds", 0)
+        if seconds > 1200:
+            logger.info(f"Видео: {webpage_url} пропущенно так как длинна: {seconds} > 1200")
+            return None
         
         if not webpage_url:
             logger.error(f"Нет webpage_url для видео {video_id}")
@@ -282,9 +286,7 @@ class VideoDownloader:
                 
                 # Команда yt-dlp
                 cmd = [
-                    ".venv/bin/python",
-                    "-m"
-                    "yt_dlp",
+                    "yt-dlp",
                     "-f", format_id,
                     "-o", output_template,
                     webpage_url
@@ -301,7 +303,7 @@ class VideoDownloader:
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=600  # 10 минут таймаут
+                        timeout=1800  # 30 минут таймаут
                     )
                     
                     if result.returncode == 0:
@@ -595,8 +597,8 @@ def main():
     Главная функция для запуска загрузчика.
     """
     # Настройки (можно вынести в конфиг или env переменные)
-    token = os.getenv("HF_HUB_TOKEN")
-    repo_id = os.getenv("HF_VIDEO_REPO_ID", "Ilialebedev/videos")  # Отдельный репозиторий для видео
+    token = ""
+    repo_id = os.getenv("HF_VIDEO_REPO_ID", "Ilialebedev/videos4")  # Отдельный репозиторий для видео
     
     # Логинимся в HF
     login(token=token)

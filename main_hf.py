@@ -1,6 +1,6 @@
 import sys
 import os
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = "/content/MetaFetcher"
 sys.path.append(project_root)
 
 from utils._huggingface_uploader import HuggingFaceUploader
@@ -33,8 +33,8 @@ except ImportError:
 
 
 # Константы
-FETCHER_RESULTS_DIR = os.path.join(project_root, ".results", "fetcher")
-YT_DLP_RESULTS_DIR = os.path.join(project_root, ".results", "fetcher", "yt_dlp")
+FETCHER_RESULTS_DIR = os.path.join("/content/drive/MyDrive", ".results", "fetcher")
+YT_DLP_RESULTS_DIR = os.path.join("/content/drive/MyDrive", ".results", "fetcher", "yt_dlp")
 META_SNAPSHOT_DIR = os.path.join(FETCHER_RESULTS_DIR, "meta_snapshot")
 CHECK_INTERVAL = 300  # 300 секунд = 5 минут
 
@@ -531,7 +531,7 @@ def process_and_upload(uploader: HuggingFaceUploader):
 
 
 def main():
-    token = os.getenv("HF_TOKEN")
+    token = ""
     
     if not token:
         _global_logger.error("HF_TOKEN environment variable is not set!")
@@ -542,7 +542,7 @@ def main():
     uploader = HuggingFaceUploader(
         repo_id="Ilialebedev/snapshots",
         token=token,
-        cache_dir=os.path.join(project_root, ".results", "fetcher", ".cache")
+        cache_dir=os.path.join("/content/drive/MyDrive", ".results", "fetcher", ".cache")
     )
     
     _global_logger.info(f"Инициализирован main_hf.py")
