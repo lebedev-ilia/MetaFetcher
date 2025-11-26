@@ -186,9 +186,7 @@ class Fetcher():
         # Используем глобальный logger для единообразия
         self.logger = _global_logger
         
-        self.KEYS = [
-            "AIzaSyBYKGEA8Vs6xfLdFS2BES8ZhRR0xkfQXnM"
-        ]
+        self.KEYS = []
         self.current_key_index = current_key_index if current_key_index else 0
         # Инициализируем KeyManager для thread-safe управления ключами
         self.key_manager = KeyManager(self.KEYS)
@@ -218,7 +216,7 @@ class Fetcher():
         self.quota = 0
         self.time_now = datetime.now()
         self.result_final_data = None
-        self.INTERVAL_BETWEEN_SNAPSHOTS = 60 * 60 * 5
+        self.INTERVAL_BETWEEN_SNAPSHOTS = 24 * 60 * 60 * 7
         self.first_start = False
         self.temporal = False
         self.snapshot_num = 0  # Устанавливаем по умолчанию для использования в get_snapshot_data
@@ -305,6 +303,16 @@ class Fetcher():
                     self.logger.info(f"init | Продолжаем мета-снапшот")
                 else:
                     self.logger.info(f"init | Продолжаем снапшот (№{self.snapshot_num})")
+                    self.temporal = True
+                    self.logger.info(f"init | Temporal: {self.temporal}")
+                    if self.target2ids:
+                        l = len(self.target2ids)
+                        self.logger.info(f"Len target2ids: {l}")
+                    else:
+                        self.logger.info(f"Создаем target2ids...")
+                        self.target2ids = self._create_target2ids()
+                        l = len(self.target2ids)
+                        self.logger.info(f"Len target2ids: {l}")
             else:
                 self.temporal = True
                 self.logger.info(f"init | Temporal: {self.temporal}")
@@ -740,7 +748,7 @@ class Fetcher():
         existing_snapshot_data = None
         target2ids = None
 
-        l = len(sorted([file for file in os.listdir(os.path.join(os.path.dirname(__file__), ".results/fetcher")) if file.startswith("snapshot_") or file == "meta_snapshot"]))
+        l = len(sorted([file for file in os.listdir(os.path.join("/content/drive/MyDrive", ".results/fetcher")) if file.startswith("snapshot_") or file == "meta_snapshot"]))
         
         if l == 0:
             return None, None, None, None, None
@@ -1613,8 +1621,6 @@ class Fetcher():
     def _get_basic_info(self, vids: list) -> dict:
         len_vids = len(vids)
         
-        self.logger.info(f"get_basic_info | Запрос: {len_vids}")
-        
         if len_vids > 1:
             vids = ",".join(vids)
         else:
@@ -1861,10 +1867,12 @@ class Fetcher():
     def _batch_run(self, vids: list, previous_data: Optional[Dict[str, Dict]] = None) -> dict:
         batches = self._batching(vids)
         batch_results = []
+        b_quota = 0
         _status = True
         for i, batch in enumerate(batches):
             start_time = time.time()
             base_data, base_quota, duration, status = self._get_basic_info(batch)
+            b_quota += base_quota
             if not status:
                 self.logger.info(f"Batch: {i+1} | на _get_basic_info | status: {status}")
                 _status = False
@@ -1874,6 +1882,7 @@ class Fetcher():
                 continue
             filtered_vids = list(base_data.keys())
             channel_data, channel_quota, status = self._get_channel_info(base_data)
+            b_quota += channel_quota
             if not status:
                 self.logger.info(f"Batch: {i+1} | на _get_channel_info | status: {status}")
                 _status = False
@@ -1883,13 +1892,14 @@ class Fetcher():
                 self.logger.info(f"Batch: {i+1} | на _get_comments | status: {status}")
                 _status = False
                 break
+            b_quota += comments_quota
             batch_duration = time.time() - start_time
             valid_vids = [vid for vid in base_data.keys() if vid in channel_data and vid in comments_data]
             batch_result = self._batch_aggregation(
                 valid_vids, base_data, channel_data, comments_data, batch_duration, base_quota, channel_quota, comments_quota, failed_comments, previous_data or {}
             )            
             batch_results.append(batch_result)
-        return batch_results, _status
+        return batch_results, _status, b_quota
 
     def _get_max_results_and_pages(self, nums):
         return min(100, nums), min(9, (nums // 100) + 1 if nums >= 100 else 1)
@@ -2165,7 +2175,7 @@ class Fetcher():
                         
                         self.logger.info(f"Пришло с search: {len(responses)} | Пришло с filt: {len(responses_filt)} | Дубликатов: {len(responses) - len(responses_filt)}")
 
-                        batch_results, status = self._batch_run(responses)
+                        batch_results, status, b_quota = self._batch_run(responses)
 
                         results, added_vids = self.distribute_to_intervals(batch_results, cat, results)
                         results = self._append_query(query, cat, results)
@@ -2175,6 +2185,8 @@ class Fetcher():
                         new_vids = added_vids
 
                         nums -= len(new_vids)
+
+                        self.logger.info(f"Осталось видео: {nums}")
 
                         published_after = self._get_published_after(results, cat, intervals.keys())
                         
@@ -2219,10 +2231,10 @@ class Fetcher():
         return results
 
     def _sleep(self, seconds: int):
-        if seconds > 5:
+        if seconds > 60:
             self.logger.info(f"Ожидание: {seconds}")
-            time.sleep(5)
-            seconds -= 5
+            time.sleep(60)
+            seconds -= 60
         else:
             self.logger.info(f"Ожидание: {seconds}")
             time.sleep(seconds)
@@ -2230,8 +2242,10 @@ class Fetcher():
         return seconds
 
     def search_snapshot(self):
-        self.logger.info("search_snapshot")
+        self.logger.info("[search_snapshot] Start")
+
         if not self.target2ids:
+            self.logger.info("[search_snapshot] Еще раз создаем target2ids")
             self.target2ids = self._create_target2ids()
 
         self.channel_cache = {}
@@ -2248,11 +2262,20 @@ class Fetcher():
                 while seconds > 0:
                     seconds = self._sleep(seconds)
 
+            self.logger.info(f"[search_snapshot] Timestamp: {timestamp} | Видео: {len(vids)}")
+
             prev_data = {}
             if self.existing_snapshot_data and timestamp in self.existing_snapshot_data:
                 prev_data = self.existing_snapshot_data[timestamp]
 
-            timestamp_results = self._batch_run(vids, previous_data=prev_data)
+            tik = time.time()
+            timestamp_results, status, b_quota = self._batch_run(vids, previous_data=prev_data)
+            tok = round(time.time() - tik, 2)
+
+            self.logger.info(f"[search_snapshot] Quota за батч: {b_quota} | Время батча: {tok}")
+
+            if not status:
+                raise QuotaError
 
             results[timestamp] = self.prepare_batch(timestamp_results)
 

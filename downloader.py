@@ -242,7 +242,12 @@ class VideoDownloader:
         """
         webpage_url = video_data.get("webpage_url")
         formats = video_data.get("formats", [])
-        seconds = video_data.get("duration_seconds", 0)
+        seconds = video_data.get("duration_seconds", None)
+
+        if not seconds:
+            logger.info(f"Видео: {webpage_url} пропущенно так как seconds = {seconds}")
+            return None
+
         if seconds > 1200:
             logger.info(f"Видео: {webpage_url} пропущенно так как длинна: {seconds} > 1200")
             return None
