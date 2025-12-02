@@ -1,5 +1,6 @@
 from ast import Not
 import os
+from pathlib import Path
 import time
 import json
 import logging
@@ -8,9 +9,12 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from huggingface_hub import upload_large_folder, login, upload_file
 from threading import Lock
 
 import numpy as np
+
+login("")
 
 # Подавляем предупреждение о версии Python от google.api_core
 warnings.filterwarnings('ignore', category=FutureWarning, module='google.api_core')
@@ -220,6 +224,12 @@ class Fetcher():
         self.first_start = False
         self.temporal = False
         self.snapshot_num = 0  # Устанавливаем по умолчанию для использования в get_snapshot_data
+        
+        self.tmp_dir = "/content/MetaFetcher/tmp_dir"
+        os.makedirs(self.tmp_dir, exist_ok=True)
+        
+        self.last_commit_time = None
+        self.last_progress_commit_time = None
 
         self.existing_meta_data, self.seq, self.existing_snapshot_data, self.target2ids, self.latest_snapshot_folder = self.get_snapshot_data()
         
@@ -340,7 +350,7 @@ class Fetcher():
         if self.snapshot_num == 0:
             return os.path.join(self.RESULTS_PATH, "meta_snapshot", f"{category}.json")
         else:
-            return os.path.join(self.RESULTS_PATH, f"snapshot_{self.snapshot_num}", f"{category}.json")
+            return f"Ilialebedev/snapshot_{self.snapshot_num}", os.path.join(self.tmp_dir, f"{category}.json")
     
     def _get_progress_file_path(self) -> str:
         """
@@ -352,46 +362,45 @@ class Fetcher():
         if self.snapshot_num == 0:
             return os.path.join(self.RESULTS_PATH, "meta_snapshot", "progress.json")
         else:
-            return os.path.join(self.RESULTS_PATH, f"snapshot_{self.snapshot_num}", "progress.json")
+            return f"Ilialebedev/snapshot_{self.snapshot_num}", os.path.join("/content/MetaFetcher", "progress.json")
     
     def _load_progress(self) -> dict:
-        """
-        Загружает файл прогресса.
-        
-        Returns:
-            Словарь с прогрессом категорий {category: True/False} для meta_snapshot
-            или timestamp'ов {timestamp: True/False} для snapshot_, или пустой словарь
-        """
-        progress_path = self._get_progress_file_path()
-        if os.path.exists(progress_path):
+        repo, path = self._get_progress_file_path()
+        if os.path.exists(path):
             try:
-                with open(progress_path, "r", encoding="utf-8") as f:
+                with open(path, "r", encoding="utf-8") as f:
                     progress = json.load(f)
                 if self.snapshot_num == 0:
                     self.logger.info(f"_load_progress | Загружен прогресс: {len(progress)} категорий")
                 else:
                     self.logger.info(f"_load_progress | Загружен прогресс: {len(progress)} timestamp'ов")
                 return progress
-            except json.JSONDecodeError as e:
-                self.logger.warning(f"_load_progress | JSONDecodeError | Файл {progress_path} поврежден: {e}")
-                return {}
             except Exception as e:
                 self.logger.warning(f"_load_progress | Exception | {e}")
                 return {}
         return {}
     
     def _save_progress(self, progress: dict) -> None:
-        """
-        Сохраняет файл прогресса.
-        
-        Args:
-            progress: Словарь с прогрессом категорий {category: True/False} для meta_snapshot
-                     или timestamp'ов {timestamp: True/False} для snapshot_
-        """
-        progress_path = self._get_progress_file_path()
+        repo, path = self._get_progress_file_path()
         try:
-            with open(progress_path, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(progress, f, ensure_ascii=False, indent=4)
+                
+            t = time.time()
+            
+            if self.last_progress_commit_time:
+                if t - self.last_progress_commit_time > 54:
+                    upload_file(
+                        path_or_fileobj=path,
+                        repo_id=repo,
+                        repo_type="dataset",
+                    )
+                    self.last_progress_commit_time = t
+                    self.logger.info("Обновлен файл прогресса")
+                    return
+                    
+            self.logger.info(f"Файл прогресса не обновлен так как прошло {t - self.last_progress_commit_time} < 54 сек")
+            
         except Exception as e:
             self.logger.warning(f"_save_progress | Exception | {e}")
     
@@ -432,10 +441,33 @@ class Fetcher():
             category: Название категории (для meta_snapshot) или timestamp (для snapshot_)
             data: Словарь с данными категории или timestamp
         """
-        category_path = self._get_category_file_path(category)
         try:
-            with open(category_path, "w", encoding="utf-8") as f:
+            repo, path = self._get_category_file_path(category)
+            
+            t = time.time()
+            
+            if self.last_commit_time:
+                if t - self.last_commit_time > 54:
+                    
+                    upload_large_folder(
+                        folder_path=self.tmp_dir,
+                        repo_id=repo,
+                        repo_type="dataset",
+                    )
+                    self.last_commit_time = t
+                    
+                    self.logger.info(f"_save_category_data | Результаты загружены в HF: {len(os.listdir(self.tmp_dir))}")
+                    
+                    for file in os.listdir(self.tmp_dir):
+                        os.remove(f"{self.tmp_dir}/{file}")
+                    
+                    return
+                
+            self.logger.info(f"_save_category_data | Результаты не загружены в HF: {len(os.listdir(self.tmp_dir))} | time: {t - self.last_commit_time}")
+            
+            with open(path, 'w') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
+            
         except Exception as e:
             self.logger.warning(f"_save_category_data | Exception | {e}")
     
