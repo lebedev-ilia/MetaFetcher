@@ -546,12 +546,7 @@ class Fetcher():
             
             # Обновляем progress.json
             progress = self._load_progress()
-            # Проверяем, завершен ли timestamp (все видео обработаны)
-            timestamp_data = results[timestamp]
-            expected_vids = self.target2ids.get(timestamp, []) if self.target2ids else []
-            actual_vids = list(timestamp_data.keys()) if isinstance(timestamp_data, dict) else []
-            is_completed = len(actual_vids) >= len(expected_vids) if expected_vids else False
-            progress[timestamp] = is_completed
+            progress[timestamp] = True
             self._save_progress(progress)
 
     def check_not_completed_snapshot(self) -> bool:
@@ -662,54 +657,11 @@ class Fetcher():
             for timestamp, expected_ids in self.target2ids.items():
                 is_completed_in_progress = progress.get(timestamp, False)
                 
-                # Загружаем данные timestamp для проверки
-                timestamp_data = self._load_category_data(timestamp)
-                
-                # Определяем, действительно ли timestamp завершен
-                is_really_completed = False
-                if timestamp_data:
-                    # Проверяем, все ли видео обработаны
-                    actual_ids = list(timestamp_data.keys()) if isinstance(timestamp_data, dict) else []
-                    is_really_completed = len(actual_ids) >= len(expected_ids)
-                    
-                    if is_really_completed and not is_completed_in_progress:
-                        # Обновляем progress.json
-                        progress[timestamp] = True
-                        self._save_progress(progress)
-                        self.logger.info(f"check_not_completed_snapshot | Timestamp {timestamp} завершен (все видео обработаны)")
-                else:
-                    # Timestamp не найден - начинаем с нуля
-                    is_really_completed = False
-                
-                # Если в progress помечен как завершенный, но на самом деле не завершен - исправляем
-                if is_completed_in_progress and not is_really_completed:
-                    self.logger.warning(f"check_not_completed_snapshot | Timestamp {timestamp} помечен как завершенный в progress, но не завершен. Исправляем.")
-                    progress[timestamp] = False
-                    self._save_progress(progress)
-                    all_completed = False
-                
-                # Если timestamp действительно завершен
-                if is_really_completed:
-                    # Обновляем progress, если там было False
-                    if not is_completed_in_progress:
-                        progress[timestamp] = True
-                        self._save_progress(progress)
-                    continue
-                
-                # Timestamp не завершен
-                all_completed = False
-                
-                if timestamp_data:
-                    # Timestamp не завершен - проверяем отсутствующие видео
-                    actual_ids = list(timestamp_data.keys()) if isinstance(timestamp_data, dict) else []
-                    missing_ids = [id for id in expected_ids if id not in actual_ids]
-                    if missing_ids:
-                        missing[timestamp] = missing_ids
-                        self.logger.info(f"check_not_completed_snapshot | timestamp: {timestamp} | Кол-во отсутствующих id: {len(missing_ids)}")
-                else:
-                    # Timestamp не найден - все видео отсутствуют
+                if not is_completed_in_progress:
+                    if all_completed:
+                        all_completed = False
                     missing[timestamp] = expected_ids
-                    self.logger.info(f"check_not_completed_snapshot | timestamp: {timestamp} отсутствует в data")
+                    self.logger.info(f"check_not_completed_snapshot | timestamp: {timestamp} в progress = False")
             
             if all_completed:
                 self.logger.info(f"check_not_completed_snapshot | Все timestamp'ы завершены")
