@@ -389,17 +389,29 @@ class Fetcher():
             t = time.time()
             
             if self.last_progress_commit_time:
-                if t - self.last_progress_commit_time > 54:
+                if t - self.last_progress_commit_time > 90:
                     upload_file(
                         path_or_fileobj=path,
                         repo_id=repo,
                         repo_type="dataset",
+                        path_in_repo="progress.json"
                     )
                     self.last_progress_commit_time = t
                     self.logger.info("Обновлен файл прогресса")
                     return
+            else:
+                upload_file(
+                    path_or_fileobj=path,
+                    repo_id=repo,
+                    repo_type="dataset",
+                    path_in_repo="progress.json"
+                )
+                self.last_progress_commit_time = t
+                self.logger.info("Обновлен файл прогресса")
+                return
+                
                     
-            self.logger.info(f"Файл прогресса не обновлен так как прошло {t - self.last_progress_commit_time} < 54 сек")
+            self.logger.info(f"Файл прогресса не обновлен так как прошло < 90 сек")
             
         except Exception as e:
             self.logger.warning(f"_save_progress | Exception | {e}")
@@ -459,9 +471,23 @@ class Fetcher():
                     self.logger.info(f"_save_category_data | Результаты загружены в HF: {len(os.listdir(self.tmp_dir))}")
                     
                     for file in os.listdir(self.tmp_dir):
-                        os.remove(f"{self.tmp_dir}/{file}")
-                    
+                        if file.endswith('.json'):
+                            os.remove(f"{self.tmp_dir}/{file}")
                     return
+            else:
+                upload_large_folder(
+                    folder_path=self.tmp_dir,
+                    repo_id=repo,
+                    repo_type="dataset",
+                )
+                self.last_commit_time = t
+                
+                self.logger.info(f"_save_category_data | Результаты загружены в HF: {len(os.listdir(self.tmp_dir))}")
+                
+                for file in os.listdir(self.tmp_dir):
+                    if file.endswith('.json'):
+                        os.remove(f"{self.tmp_dir}/{file}")
+                return
                 
             self.logger.info(f"_save_category_data | Результаты не загружены в HF: {len(os.listdir(self.tmp_dir))} | time: {t - self.last_commit_time}")
             
